@@ -42,6 +42,7 @@
     "@types/react-flip-move": "^2.9.12",
     "@types/recoil": "^0.0.9",
     "axios": "0.27.2",
+    "firebase": "^9.22.2",
     "jest": "^29.5.0",
     "jest-environment-jsdom": "^29.5.0",
     "react": "^17.0.2",
