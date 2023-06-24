@@ -28,10 +28,15 @@ export const userSlice = createSlice({
 
       targetState.user = { uid: '', photoUrl: '', displayName: '' }
     },
+    updateUserProfile: (state, action: PayloadAction<Omit<UserState, 'uid'>>) => {
+      const targetState = state
+      targetState.user.displayName = action.payload.displayName
+      targetState.user.photoUrl = action.payload.photoUrl
+    },
   },
 })
 
-export const { login, logout } = userSlice.actions
+export const { login, logout, updateUserProfile } = userSlice.actions
 
 export const selectUser = (state: RootState) => state.user.user
 

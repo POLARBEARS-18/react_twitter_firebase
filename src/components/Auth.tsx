@@ -8,33 +8,86 @@ import Grid from '@mui/material/Grid'
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import Typography from '@mui/material/Typography'
 import { createTheme, css, ThemeProvider } from '@mui/material/styles'
-import { FC, useState } from 'react'
-import { auth, provider } from 'lib/firebase/firebase'
+import { ChangeEvent, FC, MouseEvent, useState } from 'react'
+import { auth, provider, storage } from 'lib/firebase/firebase'
 
-import { Email } from '@mui/icons-material'
+import { AccountCircle, Camera, Email, Send } from '@mui/icons-material'
+import { useDispatch } from 'react-redux'
+import { updateUserProfile } from 'features/userSlice'
+import { IconButton, Modal } from '@mui/material'
 
 const defaultTheme = createTheme()
 
+const getModalStyle = () => {
+  const top = 50
+  const left = 50
+
+  return {
+    top: `${top}%`,
+    left: `${left}%`,
+    transform: `translate(-${top}%, -${left}%)`,
+  }
+}
+
 const Auth: FC = () => {
+  const dispatch = useDispatch()
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [avatarImage, setAvatarImage] = useState<File | null>(null)
   const [isLogin, setIsLogin] = useState(true)
+  const [openModal, setOpenModal] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+
+  const sendResetEmail = async (e: MouseEvent<HTMLElement>) => {
+    await auth
+      .sendPasswordResetEmail(resetEmail)
+      .then(() => {
+        setOpenModal(false)
+        setResetEmail('')
+      })
+      .catch((err) => {
+        if (err instanceof Error) {
+          alert(err.message)
+          setResetEmail('')
+        }
+      })
+  }
+
+  const onChangeImageHandler = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files![0]) {
+      setAvatarImage(e.target.files![0])
+      const targetEvent = e
+      targetEvent.target.value = ''
+    }
+  }
 
   const signInEmail = async () => {
     await auth.signInWithEmailAndPassword(email, password)
   }
 
   const signUpEmail = async () => {
-    await auth.createUserWithEmailAndPassword(email, password)
-  }
+    const authUser = await auth.createUserWithEmailAndPassword(email, password)
+    let url = ''
+    if (avatarImage) {
+      const S = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+      const N = 16
+      const randomChar = Array.from(crypto.getRandomValues(new Uint32Array(N)))
+        .map((n) => S[n % S.length])
+        .join('')
+      const fileName = `${randomChar}_${avatarImage.name}`
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    console.log({
-      email: data.get('email'),
-      password: data.get('password'),
+      await storage.ref(`avatars/${fileName}`).put(avatarImage)
+      url = (await storage.ref('avatars').child(fileName).getDownloadURL()) as string
+    }
+
+    await authUser.user?.updateProfile({
+      displayName: username,
+      photoURL: url,
     })
+
+    dispatch(updateUserProfile({ displayName: username, photoUrl: url }))
   }
 
   const signInGoogle = async () => {
@@ -74,7 +127,33 @@ const Auth: FC = () => {
             <Typography component="h1" variant="h5">
               {isLogin ? 'Login' : 'Register'}
             </Typography>
-            <Box component="form" noValidate onSubmit={handleSubmit} sx={{ mt: 1 }}>
+            <Box component="form" noValidate sx={{ mt: 1 }}>
+              {!isLogin && (
+                <>
+                  <TextField
+                    margin="normal"
+                    required
+                    fullWidth
+                    name="username"
+                    label="Username"
+                    id="username"
+                    autoComplete="username"
+                    autoFocus
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value)
+                    }}
+                  />
+                  <Box textAlign="center">
+                    <IconButton>
+                      <label htmlFor="inputFile">
+                        <AccountCircle fontSize="large" css={avatarImage ? SLoginAddIconLoaded : SLoginAddIcon} />
+                        <input type="file" onChange={onChangeImageHandler} css={SLoginHiddenIcon} id="inputFile" />
+                      </label>
+                    </IconButton>
+                  </Box>
+                </>
+              )}
               <TextField
                 margin="normal"
                 required
@@ -130,14 +209,19 @@ const Auth: FC = () => {
                         }
                       }
                 }
+                disabled={
+                  isLogin ? !email || password.length < 6 : !username || !email || password.length < 6 || !avatarImage
+                }
               >
                 {isLogin ? 'Login' : 'Register'}
               </Button>
               <Grid container>
                 <Grid item xs>
-                  <span css={SLoginReset}>Forgot password?</span>
+                  <button type="button" onClick={() => setOpenModal(true)} css={[SToggleModeButton]}>
+                    <span css={SLoginReset}>Forgot password?</span>
+                  </button>
                 </Grid>
-                <Grid item xs>
+                <Grid item>
                   <button
                     type="button"
                     onClick={() => setIsLogin(!isLogin)}
@@ -148,10 +232,42 @@ const Auth: FC = () => {
                 </Grid>
               </Grid>
 
-              <Button type="button" fullWidth variant="contained" sx={{ mt: 3, mb: 2 }} onClick={signInGoogle}>
+              <Button
+                type="button"
+                startIcon={<Camera />}
+                fullWidth
+                variant="contained"
+                sx={{ mt: 3, mb: 2 }}
+                onClick={signInGoogle}
+              >
                 Sign In with Google
               </Button>
             </Box>
+            <Modal open={openModal} onClose={() => setOpenModal(false)}>
+              <div style={getModalStyle()} css={SModal}>
+                <div css={SLoginModal}>
+                  <TextField
+                    InputLabelProps={{
+                      shrink: true,
+                    }}
+                    margin="normal"
+                    required
+                    fullWidth
+                    name="email"
+                    label="Reset E-mail"
+                    type="email"
+                    id="password"
+                    value={resetEmail}
+                    onChange={(e) => {
+                      setResetEmail(e.target.value)
+                    }}
+                  />
+                  <IconButton onClick={sendResetEmail}>
+                    <Send />
+                  </IconButton>
+                </div>
+              </div>
+            </Modal>
           </Box>
         </Grid>
       </Grid>
@@ -173,12 +289,12 @@ const SLoginModal = css`
 const SLoginReset = css`
   cursor: pointer;
 `
-const LoginHiddenIcon = css`
+const SLoginHiddenIcon = css`
   text-align: center;
   display: none;
 `
 
-const SLonginAddItem = css`
+const SLoginAddIcon = css`
   cursor: pointer;
   color: gray;
 `
@@ -192,4 +308,14 @@ const SToggleModeButton = css`
   border: none;
   outline: none;
   background: transparent;
+`
+
+const SModal = css`
+  outline: none;
+  position: absolute;
+  width: 400px;
+  border-radius: 10px;
+  background-color: white;
+  box-shadow: 5px;
+  padding: 10px;
 `
